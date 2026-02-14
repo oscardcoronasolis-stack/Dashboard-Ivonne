@@ -1,0 +1,148 @@
+/**
+ * QueryBuilder.gs — Construcción dinámica de SQL desde filtros
+ * ÚNICA función buildTiendaFilter() para condiciones WHERE de tienda
+ */
+
+/**
+ * FUNCIÓN REUTILIZABLE: Condición WHERE para tiendas
+ * Convierte a UPPER para que coincida con Vent_Historica (que tiene nombres en MAYÚSCULAS)
+ */
+function buildTiendaFilter(selectedTiendas) {
+  if (!selectedTiendas || selectedTiendas.length === 0) return '';
+  var escaped = selectedTiendas.map(function(v) {
+    return "'" + v.toUpperCase().replace(/'/g, "\\'") + "'";
+  }).join(',');
+  return 'AND UPPER(vh_calc.Tienda_Final) IN (' + escaped + ')';
+}
+
+/**
+ * Genera los campos SELECT para un periodo dado
+ */
+function buildPeriodFields(tag, suffix) {
+  var fields = [];
+  
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' THEN Precio_sin_IVA ELSE 0 END) AS Venta" + suffix);
+  fields.push("COUNT(DISTINCT CASE WHEN Periodo_Analisis = '" + tag + "' THEN CustomerPO END) AS Num_Ticket" + suffix);
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' THEN Qty_x_Size ELSE 0 END) AS Piezas" + suffix);
+  fields.push("CAST(SAFE_DIVIDE(SUM(CASE WHEN Periodo_Analisis = '" + tag + "' THEN Precio_sin_IVA ELSE 0 END), COUNT(DISTINCT CASE WHEN Periodo_Analisis = '" + tag + "' THEN CustomerPO END)) AS INT64) AS Ticket_Promedio" + suffix);
+  fields.push("ROUND(SAFE_DIVIDE(SUM(CASE WHEN Periodo_Analisis = '" + tag + "' THEN Qty_x_Size ELSE 0 END), COUNT(DISTINCT CASE WHEN Periodo_Analisis = '" + tag + "' THEN CustomerPO END)), 1) AS Art_X_Ticket" + suffix);
+  fields.push("ROUND(SAFE_DIVIDE(SUM(CASE WHEN Periodo_Analisis = '" + tag + "' THEN Precio_sin_IVA ELSE 0 END), SUM(CASE WHEN Periodo_Analisis = '" + tag + "' THEN Qty_x_Size ELSE 0 END)), 2) AS Precio_Promedio" + suffix);
+  
+  var cats = ['Jumpsuit','Abrigo','Saco','Set','Falda','Vestido','Camisa','Jeans','Pantalon','Short','Blusa','Tops','Sueter','Chaleco','Chamarra'];
+  for (var c = 0; c < cats.length; c++) {
+    fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND cat_1 = '" + cats[c] + "' THEN Precio_sin_IVA ELSE 0 END) AS Cat_" + cats[c] + suffix);
+  }
+  
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND SUBSTR(Temporada, 1, 2) = 'PV' THEN Precio_sin_IVA ELSE 0 END) AS Temporada_PV" + suffix);
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND SUBSTR(Temporada, 1, 2) = 'OI' THEN Precio_sin_IVA ELSE 0 END) AS Temporada_OI" + suffix);
+  
+  var anos = ['26','25','24','23','22','21'];
+  for (var a = 0; a < anos.length; a++) {
+    fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND SUBSTR(Temporada, -2) = '" + anos[a] + "' THEN Precio_sin_IVA ELSE 0 END) AS Ano_" + anos[a] + suffix);
+  }
+  
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND Colecci__n LIKE '%Muestra%' THEN Precio_sin_IVA ELSE 0 END) AS Muestras" + suffix);
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND Colecci__n LIKE '%Basico%' THEN Precio_sin_IVA ELSE 0 END) AS Venta_Basicos" + suffix);
+  fields.push("COUNT(DISTINCT CASE WHEN Periodo_Analisis = '" + tag + "' AND CustomerPO LIKE 'SH-%' THEN CustomerPO END) AS Tickets_SH" + suffix);
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND Product = 'GC-101' THEN Precio_sin_IVA ELSE 0 END) AS Gift_Card" + suffix);
+  
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND Linea = 'Ivonne' THEN Precio_sin_IVA ELSE 0 END) AS Venta_Linea_Ivonne" + suffix);
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND Linea LIKE '%Accesorios%' THEN Precio_sin_IVA ELSE 0 END) AS Venta_Linea_Accesorios" + suffix);
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND Linea LIKE '%Calzado%' THEN Precio_sin_IVA ELSE 0 END) AS Venta_Linea_Calzado" + suffix);
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND Linea = 'Plus' THEN Precio_sin_IVA ELSE 0 END) AS Venta_Linea_Plus" + suffix);
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND Linea = 'Couture' THEN Precio_sin_IVA ELSE 0 END) AS Venta_Linea_Couture" + suffix);
+  
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND CustomerCode = 'CORPORATIVOIVONNE' THEN Precio_sin_IVA ELSE 0 END) AS Ventamostrador" + suffix);
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND (CustomerCode <> 'CORPORATIVOIVONNE' OR CustomerCode IS NULL) THEN Precio_sin_IVA ELSE 0 END) AS VentaClientesRegistrados" + suffix);
+  fields.push("COUNT(DISTINCT CASE WHEN Periodo_Analisis = '" + tag + "' THEN AgentGroupName END) AS Vendedores" + suffix);
+  fields.push("COUNT(DISTINCT CASE WHEN Periodo_Analisis = '" + tag + "' THEN CustomerCode END) AS Clientes" + suffix);
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND Loyalty = 'No suscrito' THEN Precio_sin_IVA ELSE 0 END) AS Venta_Loyalty_No_Suscrito" + suffix);
+  fields.push("SUM(CASE WHEN Periodo_Analisis = '" + tag + "' AND (Loyalty <> 'No suscrito' OR Loyalty IS NULL) THEN Precio_sin_IVA ELSE 0 END) AS Venta_Loyalty_Suscrito" + suffix);
+  
+  return fields;
+}
+
+/**
+ * Genera la subquery FROM común
+ */
+function buildFromSubquery() {
+  return 'FROM (\n' +
+    '    SELECT \n' +
+    '        vh.Tienda, vh.Tipo_de_venta, vh.Fecha_orden, vh.Precio_sin_IVA,\n' +
+    '        vh.CustomerPO, vh.AgentGroupName, vh.CustomerCode, vh.Loyalty,\n' +
+    '        vh.Product, vh.Qty_x_Size, vh.Descuento_item, vh.Current_Cost,\n' +
+    '        vh.Colecci__n, vh.Linea, vh.cat_1,\n' +
+    '        IFNULL(p._Temp, \'\') AS Temporada,\n' +
+    '        CASE \n' +
+    '            WHEN vh.Fecha_orden BETWEEN fecha_seleccion_ini AND fecha_seleccion_fin THEN \'ACTUAL\'\n' +
+    '            WHEN vh.Fecha_orden BETWEEN fecha_aa_ini AND fecha_aa_fin THEN \'AA\'\n' +
+    '            WHEN vh.Fecha_orden BETWEEN fecha_aaa_ini AND fecha_aaa_fin THEN \'AAA\'\n' +
+    '            ELSE NULL \n' +
+    '        END AS Periodo_Analisis,\n' +
+    '        CASE \n' +
+    '            WHEN UPPER(vh.Tienda) <> \'WEB\' AND vh.Tipo_de_venta = \'POS\' THEN vh.Tienda\n' +
+    '            WHEN UPPER(vh.Tienda) = \'WEB\' AND vh.Tipo_de_venta = \'WEB\' THEN \'WEB\'\n' +
+    '            ELSE \'X\' \n' +
+    '        END AS Tienda_Final\n' +
+    '    FROM `' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_ID + '.' + CONFIG.TABLE_VH + '` vh\n' +
+    '    LEFT JOIN `' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_ID + '.' + CONFIG.TABLE_PARED + '` p \n' +
+    '        ON CAST(p.Pared_Modelo AS STRING) = vh.Product\n' +
+    '    WHERE \n' +
+    '        (vh.Fecha_orden BETWEEN fecha_seleccion_ini AND fecha_seleccion_fin) OR\n' +
+    '        (vh.Fecha_orden BETWEEN fecha_aa_ini AND fecha_aa_fin) OR\n' +
+    '        (vh.Fecha_orden BETWEEN fecha_aaa_ini AND fecha_aaa_fin)\n' +
+    ') AS vh_calc\n';
+}
+
+/**
+ * Declaraciones de variables de fecha
+ */
+function buildDateDeclarations(fechaIni, fechaFin) {
+  return 'DECLARE fecha_seleccion_ini DATE DEFAULT \'' + fechaIni + '\';\n' +
+    'DECLARE fecha_seleccion_fin DATE DEFAULT \'' + fechaFin + '\';\n' +
+    'DECLARE fecha_aa_ini DATE DEFAULT DATE_SUB(fecha_seleccion_ini, INTERVAL 364 DAY);\n' +
+    'DECLARE fecha_aa_fin DATE DEFAULT DATE_SUB(fecha_seleccion_fin, INTERVAL 364 DAY);\n' +
+    'DECLARE fecha_aaa_ini DATE DEFAULT DATE_SUB(fecha_seleccion_ini, INTERVAL 728 DAY);\n' +
+    'DECLARE fecha_aaa_fin DATE DEFAULT DATE_SUB(fecha_seleccion_fin, INTERVAL 728 DAY);\n\n';
+}
+
+/**
+ * Query TOTALES (sin GROUP BY tienda)
+ */
+function buildTotalsQuery(fechaIni, fechaFin, selectedTiendas) {
+  var sql = buildDateDeclarations(fechaIni, fechaFin);
+  var tiendaFilter = buildTiendaFilter(selectedTiendas);
+  
+  var allFields = [];
+  var periods = [{tag:'ACTUAL',suffix:''},{tag:'AA',suffix:'_AA'},{tag:'AAA',suffix:'_AAA'}];
+  for (var p = 0; p < periods.length; p++) {
+    allFields = allFields.concat(buildPeriodFields(periods[p].tag, periods[p].suffix));
+  }
+  
+  sql += 'SELECT\n  ' + allFields.join(',\n  ') + '\n';
+  sql += buildFromSubquery();
+  sql += 'WHERE vh_calc.Tienda_Final <> \'X\'\n' + tiendaFilter;
+  
+  return sql;
+}
+
+/**
+ * Query POR TIENDA (con GROUP BY)
+ */
+function buildMainDashboardQuery(fechaIni, fechaFin, selectedTiendas) {
+  var sql = buildDateDeclarations(fechaIni, fechaFin);
+  var tiendaFilter = buildTiendaFilter(selectedTiendas);
+  
+  var allFields = [];
+  var periods = [{tag:'ACTUAL',suffix:''},{tag:'AA',suffix:'_AA'},{tag:'AAA',suffix:'_AAA'}];
+  for (var p = 0; p < periods.length; p++) {
+    allFields = allFields.concat(buildPeriodFields(periods[p].tag, periods[p].suffix));
+  }
+  
+  sql += 'SELECT\n  vh_calc.Tienda_Final AS Tienda,\n  ' + allFields.join(',\n  ') + '\n';
+  sql += buildFromSubquery();
+  sql += 'WHERE vh_calc.Tienda_Final <> \'X\'\n' + tiendaFilter + '\n';
+  sql += 'GROUP BY vh_calc.Tienda_Final\nORDER BY Venta DESC';
+  
+  return sql;
+}
