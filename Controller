@@ -1,0 +1,61 @@
+/**
+ * Controller.gs — Interfaz entre Frontend y Backend
+ */
+
+function doGet() {
+  return HtmlService
+    .createTemplateFromFile('Index')
+    .evaluate()
+    .setTitle('Dashboard Ivonne')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+function getClientConfig() {
+  return {
+    cardSectionsOrdered: CONFIG.CARD_SECTIONS_ORDERED,
+    columnLabels: CONFIG.COLUMN_LABELS,
+    monetaryColumns: CONFIG.MONETARY_COLUMNS,
+    catalogFilters: CONFIG.CATALOG_FILTERS,
+    catalogFilterLabels: CONFIG.CATALOG_FILTER_LABELS,
+    catalogDependencies: CONFIG.CATALOG_DEPENDENCIES,
+    dateGroups: CONFIG.DATE_GROUPS
+  };
+}
+
+function getCatalog() {
+  try {
+    return getCatalogData();
+  } catch (error) {
+    Logger.log('Error getCatalog: ' + error.message);
+    throw error;
+  }
+}
+
+function getTotalsData(fechaIni, fechaFin, selectedTiendas) {
+  try {
+    var sql = buildTotalsQuery(fechaIni, fechaFin, selectedTiendas);
+    var results = runBigQueryJob(sql);
+    var parsed = parseQueryResults(results);
+    if (parsed.length === 0) return {};
+    return parsed[0];
+  } catch (error) {
+    Logger.log('Error getTotalsData: ' + error.message);
+    throw error;
+  }
+}
+
+function getByTiendaData(fechaIni, fechaFin, selectedTiendas) {
+  try {
+    var sql = buildMainDashboardQuery(fechaIni, fechaFin, selectedTiendas);
+    var results = runBigQueryJob(sql);
+    return parseQueryResults(results);
+  } catch (error) {
+    Logger.log('Error getByTiendaData: ' + error.message);
+    throw error;
+  }
+}
