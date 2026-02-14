@@ -1,0 +1,648 @@
+<script>
+/* ============================================
+   ESTADO GLOBAL
+   ============================================ */
+var appState = {
+  config: null,
+  catalog: [],
+  fechaIni: '',
+  fechaFin: '',
+  comparePeriod: 'AA',
+  catalogFilters: {},
+  selectedTiendas: [],
+  totalsData: null,
+  byTiendaData: null,
+  isLoading: false,
+  dateGroups: null,
+  activeDateGroup: null  // 'mes', 'trimestre', 'semestre', 'anual' o null
+};
+
+/* ============================================
+   INICIALIZACIÓN
+   ============================================ */
+document.addEventListener('DOMContentLoaded', function() {
+  setDefaultDates();
+  loadInitialData();
+
+  // Recarga automática al cambiar fechas manualmente
+  document.getElementById('fecha-ini').addEventListener('change', function() {
+    clearDateGroupSelects();
+    appState.activeDateGroup = null;
+    appState.fechaIni = this.value;
+    loadAllData();
+  });
+  document.getElementById('fecha-fin').addEventListener('change', function() {
+    clearDateGroupSelects();
+    appState.activeDateGroup = null;
+    appState.fechaFin = this.value;
+    loadAllData();
+  });
+});
+
+function setDefaultDates() {
+  var yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  var ayer = formatDate(yesterday);
+  document.getElementById('fecha-ini').value = ayer;
+  document.getElementById('fecha-fin').value = ayer;
+  document.getElementById('fecha-ini').max = ayer;
+  document.getElementById('fecha-fin').max = ayer;
+  appState.fechaIni = ayer;
+  appState.fechaFin = ayer;
+}
+
+function formatDate(d) {
+  var y = d.getFullYear();
+  var m = String(d.getMonth() + 1).padStart(2, '0');
+  var day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+
+function getYesterday() {
+  var d = new Date();
+  d.setDate(d.getDate() - 1);
+  return formatDate(d);
+}
+
+function loadInitialData() {
+  showLoading(true);
+  var completed = 0;
+  var total = 2;
+
+  function check() {
+    completed++;
+    if (completed >= total) {
+      buildFiltersUI();
+      buildDateGroupSelects();
+      loadAllData();
+    }
+  }
+
+  google.script.run
+    .withSuccessHandler(function(cfg) {
+      appState.config = cfg;
+      appState.dateGroups = cfg.dateGroups;
+      check();
+    })
+    .withFailureHandler(function(e) { onError(e); check(); })
+    .getClientConfig();
+
+  google.script.run
+    .withSuccessHandler(function(data) {
+      appState.catalog = data || [];
+      check();
+    })
+    .withFailureHandler(function(e) { onError(e); check(); })
+    .getCatalog();
+}
+
+/* ============================================
+   AGRUPADORES DE FECHA
+   ============================================ */
+function buildDateGroupSelects() {
+  var cfg = appState.config;
+  if (!cfg || !cfg.dateGroups) return;
+  var dg = cfg.dateGroups;
+  var ayer = getYesterday();
+
+  // Meses
+  var selMes = document.getElementById('select-mes');
+  selMes.innerHTML = '<option value="">— Mes —</option>';
+  for (var i = 0; i < dg.meses.length; i++) {
+    var m = dg.meses[i];
+    // Solo mostrar meses cuyo inicio ya pasó (no futuros)
+    if (m.ini <= ayer) {
+      var finReal = (m.fin > ayer) ? ayer : m.fin;
+      var opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = m.label;
+      selMes.appendChild(opt);
+    }
+  }
+
+  // Trimestres
+  var selTrim = document.getElementById('select-trimestre');
+  selTrim.innerHTML = '<option value="">— Trim —</option>';
+  for (var i = 0; i < dg.trimestres.length; i++) {
+    var t = dg.trimestres[i];
+    if (t.ini <= ayer) {
+      var opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = t.label;
+      selTrim.appendChild(opt);
+    }
+  }
+
+  // Semestres
+  var selSem = document.getElementById('select-semestre');
+  selSem.innerHTML = '<option value="">— Sem —</option>';
+  for (var i = 0; i < dg.semestres.length; i++) {
+    var s = dg.semestres[i];
+    if (s.ini <= ayer) {
+      var opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = s.label;
+      selSem.appendChild(opt);
+    }
+  }
+
+  // Anual
+  var selAnual = document.getElementById('select-anual');
+  selAnual.innerHTML = '<option value="">— Anual —</option>';
+  var opt = document.createElement('option');
+  opt.value = '0';
+  opt.textContent = 'Anual';
+  selAnual.appendChild(opt);
+}
+
+function onDateGroupChange(type) {
+  var cfg = appState.config;
+  if (!cfg || !cfg.dateGroups) return;
+  var dg = cfg.dateGroups;
+  var ayer = getYesterday();
+
+  var selectId = '';
+  var groupArray = [];
+
+  if (type === 'mes') { selectId = 'select-mes'; groupArray = dg.meses; }
+  else if (type === 'trimestre') { selectId = 'select-trimestre'; groupArray = dg.trimestres; }
+  else if (type === 'semestre') { selectId = 'select-semestre'; groupArray = dg.semestres; }
+  else if (type === 'anual') { selectId = 'select-anual'; groupArray = dg.anual; }
+
+  var sel = document.getElementById(selectId);
+  var idx = sel.value;
+
+  if (idx === '') {
+    // Deseleccionado → volver a ayer
+    appState.activeDateGroup = null;
+    appState.fechaIni = ayer;
+    appState.fechaFin = ayer;
+    document.getElementById('fecha-ini').value = ayer;
+    document.getElementById('fecha-fin').value = ayer;
+    clearOtherDateGroupSelects(type);
+    removeActiveSelectStyles();
+    loadAllData();
+    return;
+  }
+
+  var group = groupArray[parseInt(idx)];
+  var ini = group.ini;
+  var fin = group.fin;
+
+  // Si fin es null (anual) o mayor a ayer, usar ayer
+  if (!fin || fin > ayer) fin = ayer;
+
+  appState.activeDateGroup = type;
+  appState.fechaIni = ini;
+  appState.fechaFin = fin;
+  document.getElementById('fecha-ini').value = ini;
+  document.getElementById('fecha-fin').value = fin;
+
+  // Limpiar los OTROS selects de agrupación
+  clearOtherDateGroupSelects(type);
+
+  // Estilo activo
+  removeActiveSelectStyles();
+  sel.classList.add('active-select');
+
+  loadAllData();
+}
+
+function clearOtherDateGroupSelects(exceptType) {
+  var types = ['mes', 'trimestre', 'semestre', 'anual'];
+  var ids = ['select-mes', 'select-trimestre', 'select-semestre', 'select-anual'];
+  for (var i = 0; i < types.length; i++) {
+    if (types[i] !== exceptType) {
+      document.getElementById(ids[i]).value = '';
+    }
+  }
+}
+
+function clearDateGroupSelects() {
+  var ids = ['select-mes', 'select-trimestre', 'select-semestre', 'select-anual'];
+  for (var i = 0; i < ids.length; i++) {
+    document.getElementById(ids[i]).value = '';
+  }
+  removeActiveSelectStyles();
+}
+
+function removeActiveSelectStyles() {
+  var selects = document.querySelectorAll('.control-group select');
+  for (var i = 0; i < selects.length; i++) {
+    selects[i].classList.remove('active-select');
+  }
+}
+
+/* ============================================
+   FILTROS SEARCHABLE
+   ============================================ */
+function buildFiltersUI() {
+  var cfg = appState.config;
+  if (!cfg) return;
+  var container = document.getElementById('filters-container');
+  container.innerHTML = '';
+  var catFilters = cfg.catalogFilters || [];
+  for (var i = 0; i < catFilters.length; i++) {
+    container.appendChild(createSearchFilter(catFilters[i], cfg.catalogFilterLabels[catFilters[i]] || catFilters[i]));
+  }
+  container.appendChild(createSearchFilter('Tienda', 'Tienda'));
+}
+
+function createSearchFilter(id, label) {
+  var box = document.createElement('div');
+  box.className = 'filter-box';
+  var lbl = document.createElement('label');
+  lbl.textContent = label;
+  box.appendChild(lbl);
+  var wrap = document.createElement('div');
+  wrap.className = 'filter-input-wrap';
+  wrap.id = 'wrap-' + id;
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'filter-search';
+  input.placeholder = 'Buscar...';
+  input.id = 'input-' + id;
+  input.addEventListener('input', function() { openDropdown(id); });
+  input.addEventListener('focus', function() { openDropdown(id); });
+  wrap.appendChild(input);
+  box.appendChild(wrap);
+  var dropdown = document.createElement('div');
+  dropdown.className = 'filter-dropdown';
+  dropdown.id = 'dropdown-' + id;
+  box.appendChild(dropdown);
+  return box;
+}
+
+function getFilterOptions(filterId) {
+  var catalog = appState.catalog;
+  if (!catalog || catalog.length === 0) return [];
+  var filtered = catalog.slice();
+  var cfg = appState.config;
+  if (cfg) {
+    var allCatFilters = cfg.catalogFilters;
+    for (var f = 0; f < allCatFilters.length; f++) {
+      var col = allCatFilters[f];
+      if (col === filterId) continue;
+      var vals = appState.catalogFilters[col];
+      if (vals && vals.length > 0) filtered = filterArray(filtered, col, vals);
+    }
+  }
+  if (filterId === 'Tienda') {
+    var tiendas = [];
+    for (var i = 0; i < filtered.length; i++) {
+      var t = filtered[i].Tienda;
+      if (t && tiendas.indexOf(t) === -1) tiendas.push(t);
+    }
+    return tiendas.sort();
+  }
+  var values = [];
+  for (var i = 0; i < filtered.length; i++) {
+    var v = String(filtered[i][filterId] || '');
+    if (v && values.indexOf(v) === -1) values.push(v);
+  }
+  return values.sort();
+}
+
+function filterArray(arr, col, vals) {
+  var result = [];
+  for (var i = 0; i < arr.length; i++) {
+    if (vals.indexOf(String(arr[i][col] || '')) > -1) result.push(arr[i]);
+  }
+  return result;
+}
+
+function openDropdown(filterId) {
+  var allDropdowns = document.querySelectorAll('.filter-dropdown');
+  for (var i = 0; i < allDropdowns.length; i++) {
+    if (allDropdowns[i].id !== 'dropdown-' + filterId) allDropdowns[i].classList.remove('open');
+  }
+  var dropdown = document.getElementById('dropdown-' + filterId);
+  var input = document.getElementById('input-' + filterId);
+  var searchText = (input.value || '').toLowerCase();
+  var options = getFilterOptions(filterId);
+  if (searchText) options = options.filter(function(o) { return o.toLowerCase().indexOf(searchText) > -1; });
+  var selected = getSelectedValues(filterId);
+  dropdown.innerHTML = '';
+  if (options.length === 0) {
+    dropdown.innerHTML = '<div class="filter-dropdown-empty">Sin resultados</div>';
+  } else {
+    for (var i = 0; i < options.length; i++) {
+      var item = document.createElement('div');
+      item.className = 'filter-dropdown-item';
+      if (selected.indexOf(options[i]) > -1) item.classList.add('selected');
+      item.textContent = options[i];
+      item.setAttribute('data-value', options[i]);
+      item.setAttribute('data-filter-id', filterId);
+      item.addEventListener('click', function() {
+        toggleFilterValue(this.getAttribute('data-filter-id'), this.getAttribute('data-value'));
+      });
+      dropdown.appendChild(item);
+    }
+  }
+  dropdown.classList.add('open');
+}
+
+function getSelectedValues(filterId) {
+  if (filterId === 'Tienda') return appState.selectedTiendas;
+  return appState.catalogFilters[filterId] || [];
+}
+
+function toggleFilterValue(filterId, value) {
+  var arr;
+  if (filterId === 'Tienda') {
+    arr = appState.selectedTiendas;
+  } else {
+    if (!appState.catalogFilters[filterId]) appState.catalogFilters[filterId] = [];
+    arr = appState.catalogFilters[filterId];
+  }
+  var idx = arr.indexOf(value);
+  if (idx > -1) arr.splice(idx, 1); else arr.push(value);
+  if (filterId === 'Tienda') {
+    appState.selectedTiendas = arr;
+  } else {
+    appState.catalogFilters[filterId] = arr;
+    cleanDependentFilters(filterId);
+  }
+  renderFilterChips(filterId);
+  openDropdown(filterId);
+  loadAllData();
+}
+
+function cleanDependentFilters(changedFilter) {
+  var cfg = appState.config;
+  if (!cfg) return;
+  var allFilters = cfg.catalogFilters;
+  var startClean = false;
+  for (var i = 0; i < allFilters.length; i++) {
+    var f = allFilters[i];
+    if (f === changedFilter) { startClean = true; continue; }
+    if (!startClean) continue;
+    var current = appState.catalogFilters[f] || [];
+    if (current.length === 0) continue;
+    var validOptions = getFilterOptions(f);
+    var stillValid = [];
+    for (var j = 0; j < current.length; j++) {
+      if (validOptions.indexOf(current[j]) > -1) stillValid.push(current[j]);
+    }
+    appState.catalogFilters[f] = stillValid;
+    renderFilterChips(f);
+  }
+  if (appState.selectedTiendas.length > 0) {
+    var validT = getFilterOptions('Tienda');
+    appState.selectedTiendas = appState.selectedTiendas.filter(function(t) { return validT.indexOf(t) > -1; });
+    renderFilterChips('Tienda');
+  }
+}
+
+function renderFilterChips(filterId) {
+  var wrap = document.getElementById('wrap-' + filterId);
+  if (!wrap) return;
+  var existing = wrap.querySelectorAll('.filter-chip');
+  for (var i = 0; i < existing.length; i++) existing[i].remove();
+  var values = getSelectedValues(filterId);
+  var input = document.getElementById('input-' + filterId);
+  for (var i = 0; i < values.length; i++) {
+    var chip = document.createElement('span');
+    chip.className = 'filter-chip';
+    chip.appendChild(document.createTextNode(values[i] + ' '));
+    var xBtn = document.createElement('span');
+    xBtn.className = 'filter-chip-x';
+    xBtn.textContent = '\u00D7';
+    xBtn.setAttribute('data-filter-id', filterId);
+    xBtn.setAttribute('data-value', values[i]);
+    xBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      toggleFilterValue(this.getAttribute('data-filter-id'), this.getAttribute('data-value'));
+    });
+    chip.appendChild(xBtn);
+    wrap.insertBefore(chip, input);
+  }
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.filter-box')) {
+    var allDropdowns = document.querySelectorAll('.filter-dropdown');
+    for (var i = 0; i < allDropdowns.length; i++) allDropdowns[i].classList.remove('open');
+  }
+});
+
+/* ============================================
+   RESOLVER TIENDAS
+   ============================================ */
+function resolveSelectedTiendas() {
+  var hasDirectSelection = appState.selectedTiendas.length > 0;
+  var hasCatalogFilters = false;
+  var cfg = appState.config;
+  if (cfg) {
+    for (var i = 0; i < cfg.catalogFilters.length; i++) {
+      var vals = appState.catalogFilters[cfg.catalogFilters[i]];
+      if (vals && vals.length > 0) { hasCatalogFilters = true; break; }
+    }
+  }
+  if (!hasDirectSelection && !hasCatalogFilters) return [];
+  var catalogTiendas = [];
+  if (hasCatalogFilters) {
+    var filtered = appState.catalog.slice();
+    for (var f = 0; f < cfg.catalogFilters.length; f++) {
+      var col = cfg.catalogFilters[f];
+      var vals = appState.catalogFilters[col];
+      if (vals && vals.length > 0) filtered = filterArray(filtered, col, vals);
+    }
+    for (var i = 0; i < filtered.length; i++) {
+      var t = filtered[i].Tienda;
+      if (t && catalogTiendas.indexOf(t) === -1) catalogTiendas.push(t);
+    }
+  }
+  if (!hasDirectSelection) return catalogTiendas;
+  if (!hasCatalogFilters) return appState.selectedTiendas;
+  return appState.selectedTiendas.filter(function(t) { return catalogTiendas.indexOf(t) > -1; });
+}
+
+/* ============================================
+   PERIODO TOGGLE
+   ============================================ */
+function onPeriodChange(period) {
+  appState.comparePeriod = period;
+  var buttons = document.querySelectorAll('.period-toggle button');
+  for (var i = 0; i < buttons.length; i++) buttons[i].classList.remove('active');
+  document.getElementById('btn-' + period).classList.add('active');
+  if (appState.totalsData) renderCards(appState.totalsData);
+  if (appState.byTiendaData) renderTiendaTable(appState.byTiendaData);
+}
+
+/* ============================================
+   CARGA DE DATOS — PARALELA
+   ============================================ */
+function loadAllData() {
+  if (appState.isLoading) return;
+  appState.isLoading = true;
+  showLoading(true);
+  var tiendas = resolveSelectedTiendas();
+  var completed = 0;
+  function checkComplete() { completed++; if (completed >= 2) { showLoading(false); appState.isLoading = false; } }
+
+  google.script.run
+    .withSuccessHandler(function(data) { appState.totalsData = data; renderCards(data); checkComplete(); })
+    .withFailureHandler(function(err) { onError(err); checkComplete(); })
+    .getTotalsData(appState.fechaIni, appState.fechaFin, tiendas);
+
+  google.script.run
+    .withSuccessHandler(function(data) { appState.byTiendaData = data; renderTiendaTable(data); checkComplete(); })
+    .withFailureHandler(function(err) { onError(err); checkComplete(); })
+    .getByTiendaData(appState.fechaIni, appState.fechaFin, tiendas);
+}
+
+/* ============================================
+   RENDERIZADO TARJETAS
+   ============================================ */
+function renderCards(data) {
+  var cfg = appState.config;
+  if (!cfg || !data) return;
+  var container = document.getElementById('cards-container');
+  container.innerHTML = '';
+  var suffix = appState.comparePeriod === 'AA' ? '_AA' : '_AAA';
+  var periodLabel = appState.comparePeriod === 'AA' ? 'Año Anterior' : 'Hace 2 Años';
+  var sections = cfg.cardSectionsOrdered;
+
+  for (var s = 0; s < sections.length; s++) {
+    var section = sections[s];
+    var sectionDiv = document.createElement('div');
+    sectionDiv.className = 'section-block';
+    var titleDiv = document.createElement('div');
+    titleDiv.className = 'section-title';
+    titleDiv.textContent = section.name;
+    sectionDiv.appendChild(titleDiv);
+    var gridClass = (s === 0) ? 'cards-grid kpi-main' : 'cards-grid';
+    var gridDiv = document.createElement('div');
+    gridDiv.className = gridClass;
+
+    for (var c = 0; c < section.columns.length; c++) {
+      var colKey = section.columns[c];
+      var actual = parseFloat(data[colKey]) || 0;
+      var comparado = parseFloat(data[colKey + suffix]) || 0;
+      var dif = actual - comparado;
+      var pct = (comparado !== 0) ? ((actual / comparado) - 1) : 0;
+      var isMoney = cfg.monetaryColumns.indexOf(colKey) > -1;
+      gridDiv.appendChild(buildCard(cfg.columnLabels[colKey] || colKey, actual, comparado, dif, pct, periodLabel, isMoney));
+    }
+    sectionDiv.appendChild(gridDiv);
+    container.appendChild(sectionDiv);
+  }
+}
+
+function buildCard(label, actual, comparado, dif, pct, periodLabel, isMoney) {
+  var card = document.createElement('div');
+  card.className = 'kpi-card';
+  var labelDiv = document.createElement('div');
+  labelDiv.className = 'kpi-card-label';
+  labelDiv.textContent = label;
+  card.appendChild(labelDiv);
+  var valueDiv = document.createElement('div');
+  valueDiv.className = 'kpi-card-value';
+  valueDiv.textContent = isMoney ? formatMoney(actual) : formatNumber(actual);
+  card.appendChild(valueDiv);
+  var compareDiv = document.createElement('div');
+  compareDiv.className = 'kpi-card-compare';
+  compareDiv.appendChild(buildCompareRow(periodLabel, isMoney ? formatMoney(comparado) : formatNumber(comparado), ''));
+  compareDiv.appendChild(buildCompareRow('Diferencia', (dif >= 0 ? '+' : '') + (isMoney ? formatMoney(dif) : formatNumber(dif)), getHeatClass(dif)));
+  var pctVal = Math.round(pct * 100);
+  compareDiv.appendChild(buildCompareRow('Variación', (pctVal >= 0 ? '+' : '') + pctVal + '%', getHeatClass(pct)));
+  card.appendChild(compareDiv);
+  return card;
+}
+
+function buildCompareRow(label, value, heatClass) {
+  var row = document.createElement('div');
+  row.className = 'compare-row';
+  var lbl = document.createElement('span');
+  lbl.className = 'compare-label';
+  lbl.textContent = label;
+  row.appendChild(lbl);
+  var val = document.createElement('span');
+  val.className = 'compare-value';
+  if (heatClass) val.classList.add(heatClass);
+  val.textContent = value;
+  row.appendChild(val);
+  return row;
+}
+
+function getHeatClass(value) {
+  if (value > 0.10) return 'heat-strong-positive';
+  if (value > 0) return 'heat-positive';
+  if (value < -0.10) return 'heat-strong-negative';
+  if (value < 0) return 'heat-negative';
+  return 'heat-neutral';
+}
+
+/* ============================================
+   TABLA
+   ============================================ */
+function renderTiendaTable(rows) {
+  var cfg = appState.config;
+  if (!cfg || !rows || rows.length === 0) { document.getElementById('tienda-table-container').innerHTML = ''; return; }
+  var suffix = appState.comparePeriod === 'AA' ? '_AA' : '_AAA';
+  var tableCols = ['Venta', 'Num_Ticket', 'Piezas', 'Ticket_Promedio', 'Art_X_Ticket', 'Precio_Promedio'];
+  var html = '<div class="table-container"><div class="table-header-bar"><h3>Desglose por Tienda</h3></div>';
+  html += '<div class="data-table-wrap"><table class="data-table"><thead><tr><th>Tienda</th>';
+  for (var h = 0; h < tableCols.length; h++) {
+    var cl = cfg.columnLabels[tableCols[h]] || tableCols[h];
+    html += '<th>' + cl + '</th><th>' + cl + ' ' + appState.comparePeriod + '</th><th>Var %</th>';
+  }
+  html += '</tr></thead><tbody>';
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    html += '<tr><td>' + (row.Tienda || 'N/A') + '</td>';
+    for (var j = 0; j < tableCols.length; j++) {
+      var col = tableCols[j];
+      var actual = parseFloat(row[col]) || 0;
+      var comp = parseFloat(row[col + suffix]) || 0;
+      var pct = (comp !== 0) ? Math.round(((actual / comp) - 1) * 100) : 0;
+      var isMon = cfg.monetaryColumns.indexOf(col) > -1;
+      html += '<td>' + (isMon ? formatMoney(actual) : formatNumber(actual)) + '</td>';
+      html += '<td>' + (isMon ? formatMoney(comp) : formatNumber(comp)) + '</td>';
+      html += '<td><span class="compare-value ' + getHeatClass(pct / 100) + '">' + (pct >= 0 ? '+' : '') + pct + '%</span></td>';
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table></div></div>';
+  document.getElementById('tienda-table-container').innerHTML = html;
+}
+
+/* ============================================
+   FORMATO
+   ============================================ */
+function formatMoney(n) {
+  if (n === null || n === undefined || isNaN(n)) return '$0';
+  var num = parseFloat(n); var isNeg = num < 0; num = Math.abs(num);
+  if (num >= 1000000) return (isNeg ? '-' : '') + '$' + (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (isNeg ? '-' : '') + '$' + addCommas(Math.round(num));
+  return (isNeg ? '-' : '') + '$' + Math.round(num);
+}
+function formatNumber(n) {
+  if (n === null || n === undefined || isNaN(n)) return '0';
+  var num = parseFloat(n);
+  if (num % 1 !== 0 && Math.abs(num) < 100) return addCommas(num.toFixed(1));
+  return addCommas(Math.round(num));
+}
+function addCommas(n) {
+  var parts = n.toString().split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return parts.join('.');
+}
+function showLoading(show) {
+  var el = document.getElementById('loading-overlay');
+  if (show) el.classList.remove('hidden'); else el.classList.add('hidden');
+}
+function onError(err) {
+  console.error('Error:', err);
+  showLoading(false);
+  appState.isLoading = false;
+  var msg = (err && err.message) ? err.message : 'Error desconocido';
+  var banner = document.createElement('div');
+  banner.className = 'error-banner';
+  banner.innerHTML = '<strong>Error:</strong> ' + msg;
+  var container = document.getElementById('cards-container');
+  if (container) container.insertBefore(banner, container.firstChild);
+  setTimeout(function() { if (banner.parentNode) banner.parentNode.removeChild(banner); }, 8000);
+}
+</script>
