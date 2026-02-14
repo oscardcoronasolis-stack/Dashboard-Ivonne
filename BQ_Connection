@@ -1,0 +1,101 @@
+/**
+ * BQ_Connection.gs — Ejecutor de queries (sin lógica de negocio)
+ */
+
+function runBigQueryJob(sqlQuery) {
+  try {
+    var request = {
+      query: sqlQuery,
+      useLegacySql: false,
+      timeoutMs: 60000
+    };
+    
+    var queryResults = BigQuery.Jobs.query(request, CONFIG.PROJECT_ID);
+    var jobId = queryResults.jobReference.jobId;
+    var results = BigQuery.Jobs.getQueryResults(CONFIG.PROJECT_ID, jobId);
+    
+    while (!results.jobComplete) {
+      Utilities.sleep(500);
+      results = BigQuery.Jobs.getQueryResults(CONFIG.PROJECT_ID, jobId);
+    }
+    
+    return results;
+  } catch (error) {
+    Logger.log('Error en BigQuery: ' + error.message);
+    throw new Error('Error al ejecutar consulta: ' + error.message);
+  }
+}
+
+/**
+ * Parsea los resultados de BigQuery a un array de objetos
+ */
+function parseQueryResults(results) {
+  if (!results.rows || results.rows.length === 0) {
+    return [];
+  }
+  
+  var fields = results.schema.fields;
+  var parsed = [];
+  
+  for (var i = 0; i < results.rows.length; i++) {
+    var row = results.rows[i];
+    var obj = {};
+    for (var j = 0; j < fields.length; j++) {
+      var fieldName = fields[j].name;
+      var fieldType = fields[j].type;
+      var value = row.f[j].v;
+      
+      if (value === null || value === undefined) {
+        obj[fieldName] = fieldType === 'STRING' ? '' : 0;
+      } else if (fieldType === 'STRING') {
+        obj[fieldName] = value;
+      } else if (!isNaN(value)) {
+        obj[fieldName] = parseFloat(value);
+      } else {
+        obj[fieldName] = value;
+      }
+    }
+    parsed.push(obj);
+  }
+  
+  return parsed;
+}
+
+/**
+ * Obtener todo el catálogo de tiendas
+ * Retorna array de objetos con todos los campos del catálogo
+ * Todos los valores se convierten a STRING para comparación en frontend
+ */
+function getCatalogData() {
+  var catalogPath = '`' + CONFIG.PROJECT_ID + '.' + CONFIG.DATASET_ID + '.' + CONFIG.TABLE_CATALOGO + '`';
+  var sql = 'SELECT CAST(Tienda AS STRING) AS Tienda, ' +
+    'CAST(Zona AS STRING) AS Zona, ' +
+    'CAST(Region AS STRING) AS Region, ' +
+    'CAST(Cluster AS STRING) AS Cluster, ' +
+    'CAST(Tipo AS STRING) AS Tipo, ' +
+    'CAST(Participacion AS STRING) AS Participacion, ' +
+    'CAST(SubCategoria AS STRING) AS SubCategoria ' +
+    'FROM ' + catalogPath + ' ORDER BY Tienda';
+  
+  var results = runBigQueryJob(sql);
+  if (!results.rows || results.rows.length === 0) {
+    Logger.log('ADVERTENCIA: Catalogo_Tiendas está vacío o no existe');
+    return [];
+  }
+  
+  var fields = results.schema.fields;
+  var parsed = [];
+  
+  for (var i = 0; i < results.rows.length; i++) {
+    var row = results.rows[i];
+    var obj = {};
+    for (var j = 0; j < fields.length; j++) {
+      obj[fields[j].name] = row.f[j].v || '';
+    }
+    parsed.push(obj);
+  }
+  
+  Logger.log('Catalogo cargado: ' + parsed.length + ' tiendas');
+  Logger.log('Primera tienda: ' + JSON.stringify(parsed[0]));
+  return parsed;
+}
