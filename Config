@@ -1,0 +1,153 @@
+/**
+ * Config.gs — Definición centralizada de constantes
+ */
+var CONFIG = {
+  PROJECT_ID: 'ivonne-399623',
+  DATASET_ID: 'IVONNE',
+  TABLE_VH: 'Vent_Historica',
+  TABLE_PARED: 'Pared2026',
+  TABLE_CATALOGO: 'Catalogo_Tiendas',
+
+  CATALOG_FILTERS: ['Zona', 'Region', 'Cluster', 'Tipo', 'SubCategoria'],
+  CATALOG_FILTER_LABELS: {
+    'Zona': 'Zona',
+    'Region': 'Región',
+    'Cluster': 'Cluster',
+    'Tipo': 'Tipo',
+    'SubCategoria': 'SubCategoría'
+  },
+  CATALOG_DEPENDENCIES: {
+    'Region': ['Zona'],
+    'Cluster': ['Zona', 'Region'],
+    'Tipo': ['Zona', 'Region', 'Cluster'],
+    'SubCategoria': ['Zona', 'Region', 'Cluster', 'Tipo']
+  },
+
+  // =====================================================================
+  // AGRUPADORES DE FECHA
+  // =====================================================================
+  DATE_GROUPS: {
+    meses: [
+      { label: 'Enero',      ini: '2025-12-29', fin: '2026-01-25' },
+      { label: 'Febrero',    ini: '2026-01-26', fin: '2026-02-22' },
+      { label: 'Marzo',      ini: '2026-02-23', fin: '2026-03-29' },
+      { label: 'Abril',      ini: '2026-03-30', fin: '2026-04-26' },
+      { label: 'Mayo',       ini: '2026-04-27', fin: '2026-05-24' },
+      { label: 'Junio',      ini: '2026-05-25', fin: '2026-06-28' },
+      { label: 'Julio',      ini: '2026-06-29', fin: '2026-07-26' },
+      { label: 'Agosto',     ini: '2026-07-27', fin: '2026-08-23' },
+      { label: 'Septiembre', ini: '2026-08-24', fin: '2026-09-27' },
+      { label: 'Octubre',    ini: '2026-09-28', fin: '2026-10-25' },
+      { label: 'Noviembre',  ini: '2026-10-26', fin: '2026-11-22' },
+      { label: 'Diciembre',  ini: '2026-11-23', fin: '2026-12-27' }
+    ],
+    trimestres: [
+      { label: 'Trim 1 (Ene-Mar)', ini: '2025-12-29', fin: '2026-03-29' },
+      { label: 'Trim 2 (Abr-Jun)', ini: '2026-03-30', fin: '2026-06-28' },
+      { label: 'Trim 3 (Jul-Sep)', ini: '2026-06-29', fin: '2026-09-27' },
+      { label: 'Trim 4 (Oct-Dic)', ini: '2026-09-28', fin: '2026-12-27' }
+    ],
+    semestres: [
+      { label: 'Sem 1 (Ene-Jun)', ini: '2025-12-29', fin: '2026-06-28' },
+      { label: 'Sem 2 (Jul-Dic)', ini: '2026-06-29', fin: '2026-12-27' }
+    ],
+    anual: [
+      { label: 'Anual', ini: '2025-12-29', fin: null }
+    ]
+  },
+
+  // =====================================================================
+  // TARJETAS — Orden exacto (Basicos movido a Temporada)
+  // =====================================================================
+  CARD_SECTIONS_ORDERED: [
+    {
+      name: 'KPIs Principales',
+      columns: ['Venta', 'Ticket_Promedio', 'Art_X_Ticket', 'Num_Ticket', 'Piezas', 'Clientes', 'Precio_Promedio', 'Vendedores']
+    },
+    {
+      name: 'Temporada',
+      columns: ['Temporada_PV', 'Temporada_OI', 'Venta_Basicos']
+    },
+    {
+      name: 'Línea',
+      columns: ['Venta_Linea_Ivonne', 'Venta_Linea_Calzado', 'Venta_Linea_Couture', 'Venta_Linea_Plus', 'Venta_Linea_Accesorios', 'Muestras', 'Tickets_SH', 'Gift_Card']
+    },
+    {
+      name: 'Tipo de Producto',
+      columns: ['Cat_Blusa', 'Cat_Pantalon', 'Cat_Vestido', 'Cat_Saco', 'Cat_Jumpsuit', 'Cat_Falda', 'Cat_Abrigo', 'Cat_Jeans', 'Cat_Camisa', 'Cat_Tops', 'Cat_Sueter', 'Cat_Chamarra', 'Cat_Set', 'Cat_Short', 'Cat_Chaleco']
+    },
+    {
+      name: 'Clientes',
+      columns: ['VentaClientesRegistrados', 'Ventamostrador', 'Venta_Loyalty_Suscrito', 'Venta_Loyalty_No_Suscrito']
+    },
+    {
+      name: 'Temporada y Año',
+      columns: ['Ano_26', 'Ano_25', 'Ano_24', 'Ano_23', 'Ano_22', 'Ano_21']
+    }
+  ],
+
+  COLUMN_LABELS: {
+    'Venta': '$ Venta',
+    'Ticket_Promedio': 'Ticket Promedio',
+    'Art_X_Ticket': 'Art X ticket',
+    'Num_Ticket': 'N° Tickets',
+    'Piezas': 'Venta Piezas',
+    'Clientes': 'N° Clientes',
+    'Precio_Promedio': 'Precio Promedio',
+    'Vendedores': 'N° Vendedores',
+    'Temporada_PV': 'Venta PV',
+    'Temporada_OI': 'Venta OI',
+    'Venta_Basicos': 'Basicos',
+    'Venta_Linea_Ivonne': 'Ivonne',
+    'Venta_Linea_Calzado': 'Calzado',
+    'Venta_Linea_Couture': 'Couture',
+    'Venta_Linea_Plus': 'Plus',
+    'Venta_Linea_Accesorios': 'Accesorios',
+    'Muestras': 'Muestras',
+    'Tickets_SH': 'Shopys',
+    'Gift_Card': 'Gift_Card',
+    'Cat_Blusa': 'Blusa',
+    'Cat_Pantalon': 'Pantalon',
+    'Cat_Vestido': 'Vestido',
+    'Cat_Saco': 'Saco',
+    'Cat_Jumpsuit': 'Jumpsuit',
+    'Cat_Falda': 'Falda',
+    'Cat_Abrigo': 'Abrigo',
+    'Cat_Jeans': 'Jeans',
+    'Cat_Camisa': 'Camisa',
+    'Cat_Tops': 'Tops',
+    'Cat_Sueter': 'Sueter',
+    'Cat_Chamarra': 'Chamarra',
+    'Cat_Set': 'Set',
+    'Cat_Short': 'Short',
+    'Cat_Chaleco': 'Chaleco',
+    'VentaClientesRegistrados': 'Vta a Clientes',
+    'Ventamostrador': 'Vta sin registro Cliente',
+    'Venta_Loyalty_Suscrito': 'Vta generó puntos',
+    'Venta_Loyalty_No_Suscrito': 'Vta no generó puntos',
+    'Ano_26': '2026',
+    'Ano_25': '2025',
+    'Ano_24': '2024',
+    'Ano_23': '2023',
+    'Ano_22': '2022',
+    'Ano_21': '2021'
+  },
+
+  MONETARY_COLUMNS: [
+    'Venta', 'Ticket_Promedio', 'Precio_Promedio',
+    'Temporada_PV', 'Temporada_OI', 'Venta_Basicos',
+    'Venta_Linea_Ivonne', 'Venta_Linea_Calzado',
+    'Venta_Linea_Couture', 'Venta_Linea_Plus', 'Venta_Linea_Accesorios',
+    'Muestras', 'Gift_Card',
+    'Cat_Blusa', 'Cat_Pantalon', 'Cat_Vestido', 'Cat_Saco', 'Cat_Jumpsuit',
+    'Cat_Falda', 'Cat_Abrigo', 'Cat_Jeans', 'Cat_Camisa', 'Cat_Tops',
+    'Cat_Sueter', 'Cat_Chamarra', 'Cat_Set', 'Cat_Short', 'Cat_Chaleco',
+    'VentaClientesRegistrados', 'Ventamostrador',
+    'Venta_Loyalty_Suscrito', 'Venta_Loyalty_No_Suscrito',
+    'Ano_26', 'Ano_25', 'Ano_24', 'Ano_23', 'Ano_22', 'Ano_21'
+  ]
+};
+
+function getConfig() {
+  return CONFIG;
+}
