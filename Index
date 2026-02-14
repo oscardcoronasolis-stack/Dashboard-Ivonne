@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base target="_top">
+  <title>Dashboard Ivonne</title>
+  <?!= include('Estilos'); ?>
+</head>
+<body>
+
+  <!-- LOADING -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="loading-spinner">
+      <div class="spinner-ring"></div>
+      <div class="loading-text">Cargando datos...</div>
+    </div>
+  </div>
+
+  <!-- HEADER -->
+  <header class="dashboard-header">
+    <span class="brand-dot"></span>
+    <h1>Dashboard de Ventas</h1>
+  </header>
+
+  <!-- BARRA DE CONTROLES: Fechas + Agrupadores + Periodo -->
+  <div class="controls-bar">
+    <!-- Fechas manuales -->
+    <div class="control-group">
+      <label for="fecha-ini">Desde</label>
+      <input type="date" id="fecha-ini">
+    </div>
+    <div class="control-group">
+      <label for="fecha-fin">Hasta</label>
+      <input type="date" id="fecha-fin">
+    </div>
+
+    <!-- Separador visual -->
+    <div class="control-separator"></div>
+
+    <!-- Agrupador de periodo: Mes -->
+    <div class="control-group">
+      <label>Mes</label>
+      <select id="select-mes" onchange="onDateGroupChange('mes')">
+        <option value="">— Mes —</option>
+      </select>
+    </div>
+
+    <!-- Agrupador: Trimestre -->
+    <div class="control-group">
+      <label>Trimestre</label>
+      <select id="select-trimestre" onchange="onDateGroupChange('trimestre')">
+        <option value="">— Trim —</option>
+      </select>
+    </div>
+
+    <!-- Agrupador: Semestre -->
+    <div class="control-group">
+      <label>Semestre</label>
+      <select id="select-semestre" onchange="onDateGroupChange('semestre')">
+        <option value="">— Sem —</option>
+      </select>
+    </div>
+
+    <!-- Agrupador: Anual -->
+    <div class="control-group">
+      <label>Anual</label>
+      <select id="select-anual" onchange="onDateGroupChange('anual')">
+        <option value="">— Anual —</option>
+      </select>
+    </div>
+
+    <!-- Separador -->
+    <div class="control-separator"></div>
+
+    <!-- Toggle AA/AAA -->
+    <div class="control-group">
+      <label>Comparar vs</label>
+      <div class="period-toggle">
+        <button id="btn-AA" class="active" onclick="onPeriodChange('AA')">AA (-1 Año)</button>
+        <button id="btn-AAA" onclick="onPeriodChange('AAA')">AAA (-2 Años)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FILTROS DINÁMICOS -->
+  <div class="filters-row" id="filters-container"></div>
+
+  <!-- CONTENIDO -->
+  <main class="dashboard-content">
+    <div id="cards-container"></div>
+    <div id="tienda-table-container"></div>
+  </main>
+
+  <?!= include('Funciones'); ?>
+</body>
+</html>
